@@ -1,5 +1,6 @@
-;; Deep Sea Research Funding Protocol Smart Contract - v2.0.0 (Enhanced Controls)
-;; Facilitates sponsorships for abyssal exploration projects with program controls and validation
+;; Deep Sea Research Funding Protocol Smart Contract 
+;; Facilitates sponsorships for abyssal exploration projects, manages research station eligibility,
+;; and provides transparent distribution of resources to verified deep-sea scientific initiatives
 
 ;; Error Constants
 (define-constant ERR-NOT-AUTHORIZED (err u100))
@@ -10,12 +11,14 @@
 (define-constant ERR-PROGRAM-PAUSED (err u105))
 (define-constant ERR-SPONSORSHIP-INVALID (err u106))
 (define-constant ERR-RESEARCH-STATUS-INVALID (err u107))
+(define-constant ERR-INVALID-CHIEF-SCIENTIST-ADDRESS (err u108))
 
 ;; Core Program Variables
 (define-data-var chief-scientist principal tx-sender)
 (define-data-var research-treasury uint u0)
 (define-data-var program-is-active bool true)
 (define-data-var sponsorship-minimum uint u1000000) ;; 1 STX
+(define-data-var hazard-protocol-active bool false)
 
 ;; Data Storage
 (define-map research-stations 
@@ -54,7 +57,7 @@
 )
 
 (define-read-only (check-program-status)
-    (var-get program-is-active)
+    (and (var-get program-is-active) (not (var-get hazard-protocol-active)))
 )
 
 ;; Helper Functions
@@ -92,6 +95,13 @@
         (is-eq status-code "ongoing")
         (is-eq status-code "pending")
         (is-eq status-code "analyzed")
+    )
+)
+
+(define-private (can-be-chief-scientist (candidate-address principal))
+    (and 
+        (not (is-eq candidate-address (var-get chief-scientist)))
+        (not (is-eq candidate-address (as-contract tx-sender)))
     )
 )
 
@@ -175,6 +185,22 @@
     )
 )
 
+(define-public (set-hazard-protocol-on)
+    (begin
+        (asserts! (is-chief-scientist) ERR-NOT-AUTHORIZED)
+        (var-set hazard-protocol-active true)
+        (ok true)
+    )
+)
+
+(define-public (set-hazard-protocol-off)
+    (begin
+        (asserts! (is-chief-scientist) ERR-NOT-AUTHORIZED)
+        (var-set hazard-protocol-active false)
+        (ok true)
+    )
+)
+
 (define-public (update-research-status (station-address principal) (new-status (string-ascii 20)))
     (begin
         (asserts! (is-chief-scientist) ERR-NOT-AUTHORIZED)
@@ -204,6 +230,7 @@
 (define-public (change-chief-scientist (new-chief-scientist-address principal))
     (begin
         (asserts! (is-chief-scientist) ERR-NOT-AUTHORIZED)
+        (asserts! (can-be-chief-scientist new-chief-scientist-address) ERR-INVALID-CHIEF-SCIENTIST-ADDRESS)
         (var-set chief-scientist new-chief-scientist-address)
         (ok true)
     )
